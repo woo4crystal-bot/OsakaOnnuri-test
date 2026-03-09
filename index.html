@@ -287,6 +287,9 @@ button.secondary{
 .btnRow{
   display:flex;
   justify-content:space-between;
+  gap:10px;
+  margin-top:12px;
+  flex-wrap:wrap;
 }
 .btnGroup{
   display:flex;
@@ -399,7 +402,8 @@ button:disabled{
 
         <div class="btnRow">
           <div class="btnGroup">
-            <button id="btnToday" class="secondary" type="button">오늘</button>
+            <button id="btnToday" class="secondary" type="button">오늘로</button>
+            <button id="btnShow" type="button">조회</button>
           </div>
           <div class="btnGroup">
             <button id="btnPrev" class="secondary" type="button">이전</button>
@@ -448,7 +452,7 @@ const I18N = {
     headerSub: "페이지를 열면 자동으로 오늘 암송이 표시됩니다.",
     startLabel: "시작일 (암송1)",
     targetLabel: "조회 날짜",
-    todayBtn: "오늘",
+    todayBtn: "오늘로",
     showBtn: "조회",
     prevBtn: "이전",
     nextBtn: "다음",
@@ -776,6 +780,7 @@ btnToday.onclick = () => {
   render();
 };
 
+btnShow.onclick = () => render();
 btnPrev.onclick = () => moveDay(-1);
 btnNext.onclick = () => moveDay(1);
 
@@ -792,5 +797,4 @@ async function init(){
 init();
 </script>
 </body>
-
 </html>
