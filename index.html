@@ -208,6 +208,10 @@ h1{
   grid-template-columns:1fr 1fr;
   gap:12px;
 }
+.controls.single{
+  grid-template-columns:1fr;
+}
+
 @media(max-width:520px){
   .controls{grid-template-columns:1fr;}
 }
@@ -220,7 +224,8 @@ label{
   font-weight:950;
 }
 
-input[type="date"]{
+input[type="date"],
+input[type="text"]{
   width:100%;
   padding:12px;
   border-radius:16px;
@@ -232,11 +237,18 @@ input[type="date"]{
   -webkit-appearance:none;
   transition:box-shadow .15s ease, border-color .15s ease, transform .06s ease;
 }
-input[type="date"]:focus{
+input[type="text"]::placeholder{
+  color:rgba(238,242,255,.42);
+}
+input[type="date"]:focus,
+input[type="text"]:focus{
   border-color:rgba(6,182,212,.45);
   box-shadow:0 0 0 4px rgba(6,182,212,.16);
 }
-input[type="date"]:active{transform:translateY(1px);}
+input[type="date"]:active,
+input[type="text"]:active{
+  transform:translateY(1px);
+}
 
 button{
   padding:12px 14px;
@@ -345,6 +357,10 @@ button:disabled{
   display:flex;
   flex-direction:column;
   gap:12px;
+}
+
+.recordHead{
+  margin-top:12px; /* 타이틀과 상태 영역 간격을 자연스럽게 증가 */
 }
 
 .recordInfo{
@@ -462,12 +478,21 @@ audio{
         </div>
 
         <div class="recordWrap" id="recordWrap">
-          <div class="recordInfo">
-            <div class="recordBadge" id="recStateBadge">
-              <span class="recDot"></span>
-              <span id="recStateText">대기 중</span>
+          <div class="recordHead">
+            <div class="recordInfo">
+              <div class="recordBadge" id="recStateBadge">
+                <span class="recDot"></span>
+                <span id="recStateText">대기 중</span>
+              </div>
+              <div class="recordBadge timer" id="recTimer">00:00</div>
             </div>
-            <div class="recordBadge timer" id="recTimer">00:00</div>
+          </div>
+
+          <div class="controls single">
+            <div>
+              <label id="lblRecorderName">이름</label>
+              <input id="recorderName" type="text" maxlength="40" placeholder="예: 정우"/>
+            </div>
           </div>
 
           <div class="btnRow" style="margin-top:0;">
@@ -514,6 +539,7 @@ let recordStartedAt = 0;
 const DEFAULT_START = "2026-02-08";
 const STORAGE_START = "memorization_start_v4";
 const STORAGE_LANG = "memorization_lang_v1";
+const STORAGE_RECORDER_NAME = "memorization_recorder_name_v1";
 
 const startInput = document.getElementById("startDate");
 const targetInput = document.getElementById("targetDate");
@@ -542,6 +568,8 @@ const recHint = document.getElementById("recHint");
 const recTimer = document.getElementById("recTimer");
 const recordWrap = document.getElementById("recordWrap");
 const recStateText = document.getElementById("recStateText");
+const lblRecorderName = document.getElementById("lblRecorderName");
+const recorderNameInput = document.getElementById("recorderName");
 
 const I18N = {
   ko: {
@@ -597,7 +625,10 @@ const I18N = {
     recIdle: "대기 중",
     recRecordingState: "녹음 중",
     recRecordedState: "녹음 완료",
-    recFileName: (no, ref, date, ext) => `암송${no}_${ref}_${date}.${ext}`,
+    recorderNameLabel: "이름",
+    recorderNamePlaceholder: "예: 정우",
+    recFileNameNoName: (no, ref, date, ext) => `암송${no}_${ref}_${date}.${ext}`,
+    recFileNameWithName: (no, ref, name, date, ext) => `암송${no}_${ref}_${name}_${date}.${ext}`,
   },
   ja: {
     headerTitle: "今日の暗唱聖句【大阪オンヌリ教会】",
@@ -652,7 +683,10 @@ const I18N = {
     recIdle: "待機中",
     recRecordingState: "録音中",
     recRecordedState: "録音完了",
-    recFileName: (no, ref, date, ext) => `暗唱${no}_${ref}_${date}.${ext}`,
+    recorderNameLabel: "名前",
+    recorderNamePlaceholder: "例: 정우",
+    recFileNameNoName: (no, ref, date, ext) => `暗唱${no}_${ref}_${date}.${ext}`,
+    recFileNameWithName: (no, ref, name, date, ext) => `暗唱${no}_${ref}_${name}_${date}.${ext}`,
   }
 };
 
@@ -693,6 +727,19 @@ function detectDefaultLang(){
   return nav.startsWith("ja") ? "ja" : "ko";
 }
 
+function sanitizeFilePart(text){
+  return String(text || "")
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+function getRecorderName(){
+  return sanitizeFilePart(recorderNameInput.value);
+}
+
 function setUIText(){
   const t = I18N[LANG];
   document.documentElement.lang = LANG;
@@ -712,6 +759,8 @@ function setUIText(){
   btnRecReset.textContent = t.recReset;
   btnRecSave.textContent = t.recSave;
   recHint.textContent = t.recHttpsHint;
+  lblRecorderName.textContent = t.recorderNameLabel;
+  recorderNameInput.placeholder = t.recorderNamePlaceholder;
 
   if(mediaRecorder && mediaRecorder.state === "recording"){
     recStateText.textContent = t.recRecordingState;
@@ -963,7 +1012,7 @@ function currentVerseInfo(){
   const v = VERSES[no - 1];
   return {
     no,
-    ref: (v.ref || "verse").replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, "_"),
+    ref: sanitizeFilePart(v.ref || "verse"),
     title: v.title || "",
     target
   };
@@ -1160,7 +1209,11 @@ async function saveRecording(){
   };
 
   const ext = getRecordingExtension(recordedBlob.type);
-  const filename = t.recFileName(info.no, info.ref, info.target, ext);
+  const safeName = getRecorderName();
+
+  const filename = safeName
+    ? t.recFileNameWithName(info.no, info.ref, safeName, info.target, ext)
+    : t.recFileNameNoName(info.no, info.ref, info.target, ext);
 
   try{
     saveBlobToFile(recordedBlob, filename);
@@ -1198,6 +1251,10 @@ btnRecStop.onclick = stopRecording;
 btnRecReset.onclick = resetRecording;
 btnRecSave.onclick = saveRecording;
 
+recorderNameInput.addEventListener("input", () => {
+  localStorage.setItem(STORAGE_RECORDER_NAME, recorderNameInput.value);
+});
+
 window.addEventListener("pagehide", () => {
   stopRecordTimer();
   cleanupStream();
@@ -1207,6 +1264,7 @@ async function init(){
   LANG = detectDefaultLang();
   startInput.value = localStorage.getItem(STORAGE_START) || DEFAULT_START;
   targetInput.value = todayISO();
+  recorderNameInput.value = localStorage.getItem(STORAGE_RECORDER_NAME) || "";
   setUIText();
 
   const ok = await loadVerses();
